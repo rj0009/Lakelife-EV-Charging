@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aion V — LakeLife Charge Estimator</title>
+<style>
+  :root{
+    --bg:#0b0f10;
+    --panel:#12181a;
+    --line:#1f2a2d;
+    --text:#e8efee;
+    --dim:#7c9490;
+    --ac:#4fb8a8;   /* teal = AC (slow, steady) */
+    --dc:#e8a23d;   /* amber = DC (fast, hot) */
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:28px 16px 60px;
+  }
+  .card{
+    width:100%;
+    max-width:440px;
+  }
+  .eyebrow{
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--dim);
+    margin-bottom:4px;
+  }
+  h1{
+    font-size:22px;
+    margin:0 0 2px;
+    font-weight:600;
+  }
+  .sub{
+    color:var(--dim);
+    font-size:13px;
+    margin-bottom:22px;
+  }
+  .field{
+    margin-bottom:16px;
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--dim);
+    margin-bottom:6px;
+  }
+  input[type=number]{
+    width:100%;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    font-size:18px;
+    padding:10px 12px;
+    border-radius:8px;
+    -moz-appearance:textfield;
+  }
+  input[type=number]:focus{outline:none;border-color:var(--dim);}
+
+  .toggle{
+    display:flex;
+    gap:8px;
+  }
+  .toggle button{
+    flex:1;
+    padding:12px 8px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--dim);
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .toggle button.active[data-type="AC"]{
+    border-color:var(--ac);
+    color:var(--ac);
+    background:rgba(79,184,168,.08);
+  }
+  .toggle button.active[data-type="DC"]{
+    border-color:var(--dc);
+    color:var(--dc);
+    background:rgba(232,162,61,.08);
+  }
+
+  .hint{
+    font-size:11px;
+    color:var(--dim);
+    margin-top:6px;
+  }
+
+  .row2{
+    display:flex;
+    gap:12px;
+  }
+  .row2 .field{flex:1;}
+
+  .result{
+    margin-top:24px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:20px;
+    background:var(--panel);
+  }
+  .result .time{
+    font-size:34px;
+    font-weight:700;
+    line-height:1.1;
+  }
+  .result .time span{
+    font-size:15px;
+    font-weight:400;
+    color:var(--dim);
+  }
+  .result .meta{
+    margin-top:10px;
+    font-size:12.5px;
+    color:var(--dim);
+    display:flex;
+    justify-content:space-between;
+  }
+  .bar-wrap{
+    margin-top:16px;
+    height:8px;
+    background:#1a2224;
+    border-radius:4px;
+    overflow:hidden;
+  }
+  .bar-fill{
+    height:100%;
+    border-radius:4px;
+    transition:width .3s;
+  }
+
+  footer{
+    margin-top:22px;
+    font-size:10.5px;
+    color:#4d605c;
+    line-height:1.5;
+  }
+  footer b{color:#6b8480;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="eyebrow">LakeLife Condo · GAC Aion V</div>
+  <h1>Charge Time Estimator</h1>
+  <div class="sub">75.3 kWh LFP pack · 11 kW AC max · 180 kW DC max</div>
+
+  <div class="field">
+    <label>Charger type at LakeLife</label>
+    <div class="toggle">
+      <button type="button" data-type="AC" class="active">AC (slow)</button>
+      <button type="button" data-type="DC">DC (fast)</button>
+    </div>
+  </div>
+
+  <div class="field" id="acPickerField">
+    <label>LakeLife AC point</label>
+    <div class="toggle">
+      <button type="button" class="ac-opt active" data-kw="7.4">7.4 kW <span style="opacity:.6">(#178, L1 — slow)</span></button>
+      <button type="button" class="ac-opt" data-kw="11" data-rated="22">22 kW <span style="opacity:.6">(#387–389, L4) → 11 kW cap</span></button>
+    </div>
+    <div class="hint">Car caps AC intake at 11 kW either way, so 22 kW points charge no faster than 7.4 kW → ~11 kW effective.</div>
+  </div>
+
+  <div class="field" id="dcPickerField" style="display:none;">
+    <label>LakeLife DC point</label>
+    <div class="toggle">
+      <button type="button" class="dc-opt active" data-kw="60">60 kW <span style="opacity:.6">(#385A / #386B)</span></button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label id="powerLabel">Charger output (kW)</label>
+    <input type="number" id="power" value="7.4" step="0.1" min="0.1">
+    <div class="hint" id="powerHint">Editable if LakeLife's board shows a different rating on the day.</div>
+  </div>
+
+  <div class="row2">
+    <div class="field">
+      <label>Battery now (%)</label>
+      <input type="number" id="startPct" value="30" min="0" max="100">
+    </div>
+    <div class="field">
+      <label>Target (%)</label>
+      <input type="number" id="targetPct" value="100" min="1" max="100">
+    </div>
+  </div>
+
+  <div class="result">
+    <div class="time" id="timeOut">— <span>estimated</span></div>
+    <div class="bar-wrap"><div class="bar-fill" id="barFill" style="width:0%;background:var(--ac);"></div></div>
+    <div class="meta">
+      <span id="energyOut">Energy: —</span>
+      <span id="costOut">Cost: —</span>
+    </div>
+    <div class="meta" style="margin-top:4px;">
+      <span id="doneOut">Ready by: —</span>
+    </div>
+  </div>
+
+  <footer>
+    <b>Assumptions (~):</b> 75.3 kWh gross / ~75.0 kWh usable pack. AC charging modelled as constant power, capped at the car's 11 kW onboard limit and whatever kW your LakeLife AC point actually delivers. DC charging uses an approximate LFP taper curve (fast to ~60–70%, then slowing sharply near 100%) scaled to your DC charger's output and capped at the car's 180 kW max. Actual times vary with battery temperature, charger sharing/load-balancing, and cable/connector losses — treat this as a planning estimate, not a guarantee.
+  </footer>
+</div>
+
+<script>
+const BATTERY_KWH = 75.0; // usable
+const AC_CAR_MAX = 11;    // kW, onboard charger limit
+const DC_CAR_MAX = 180;   // kW, peak DC accept rate
+const TARIFF = { AC: 0.63, DC: 0.73 }; // S$/kWh, LakeLife posted rates
+
+// Approximate DC power-vs-SoC curve for an LFP pack peaking at 180kW (kW at each %SoC)
+// Interpolated linearly between points. Values reflect: fast ramp, plateau, taper after ~60%.
+const DC_CURVE = [
+  [0,   70],  [5,  150], [10, 180], [20, 180], [30, 178],
+  [40, 172],  [50, 158], [60, 132], [70,  95], [80,  65],
+  [90,  38],  [95,  24], [100, 12]
+];
+
+function dcPowerAt(soc, chargerKw){
+  // linear interpolation over DC_CURVE, then cap by charger's own rated output
+  let lo = DC_CURVE[0], hi = DC_CURVE[DC_CURVE.length-1];
+  for(let i=0;i<DC_CURVE.length-1;i++){
+    if(soc >= DC_CURVE[i][0] && soc <= DC_CURVE[i+1][0]){
+      lo = DC_CURVE[i]; hi = DC_CURVE[i+1]; break;
+    }
+  }
+  const span = hi[0]-lo[0];
+  const t = span===0 ? 0 : (soc-lo[0])/span;
+  const curveKw = lo[1] + t*(hi[1]-lo[1]);
+  return Math.min(curveKw, chargerKw, DC_CAR_MAX);
+}
+
+function estimate(){
+  const type = document.querySelector('.toggle button.active').dataset.type;
+  let power = parseFloat(document.getElementById('power').value);
+  let start = parseFloat(document.getElementById('startPct').value);
+  let target = parseFloat(document.getElementById('targetPct').value);
+
+  const out = document.getElementById('timeOut');
+  const bar = document.getElementById('barFill');
+  const energyOut = document.getElementById('energyOut');
+  const costOut = document.getElementById('costOut');
+  const doneOut = document.getElementById('doneOut');
+
+  if(isNaN(power) || isNaN(start) || isNaN(target) || power<=0){
+    out.innerHTML = '— <span>enter valid values</span>';
+    return;
+  }
+  start = Math.max(0, Math.min(100, start));
+  target = Math.max(0, Math.min(100, target));
+
+  if(target <= start){
+    out.innerHTML = '0 <span>already at/above target</span>';
+    bar.style.width = '0%';
+    energyOut.textContent = 'Energy: 0 kWh';
+    costOut.textContent = 'Cost: S$0.00';
+    doneOut.textContent = 'Ready by: now';
+    return;
+  }
+
+  let hours = 0;
+  let energyKwh = (target-start)/100 * BATTERY_KWH;
+
+  if(type === 'AC'){
+    const effKw = Math.min(power, AC_CAR_MAX);
+    hours = energyKwh / effKw;
+  } else {
+    // integrate DC curve in 1% steps
+    const stepKwh = BATTERY_KWH / 100;
+    for(let s = start; s < target; s += 1){
+      const soc = Math.min(s, 99.999);
+      const kw = dcPowerAt(soc, power);
+      hours += stepKwh / Math.max(kw, 1); // avoid div by 0
+    }
+  }
+
+  const totalMin = Math.round(hours*60);
+  const h = Math.floor(totalMin/60);
+  const m = totalMin%60;
+  const timeStr = h>0 ? `${h}h ${m}m` : `${m}m`;
+
+  out.innerHTML = `${timeStr} <span>${start}% → ${target}%</span>`;
+  bar.style.width = `${Math.min(100, start + (target-start))}%`;
+  bar.style.background = type==='AC' ? 'var(--ac)' : 'var(--dc)';
+  energyOut.textContent = `Energy: ~${energyKwh.toFixed(1)} kWh`;
+  const cost = energyKwh * TARIFF[type];
+  costOut.textContent = `Cost: ~S$${cost.toFixed(2)}`;
+
+  const done = new Date(Date.now() + totalMin*60000);
+  doneOut.textContent = `Ready by: ${done.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+}
+
+document.querySelectorAll('#typeToggle button, .toggle button[data-type]').forEach(btn=>{});
+
+// Main AC/DC toggle
+document.querySelectorAll('.toggle button[data-type]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.toggle button[data-type]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const type = btn.dataset.type;
+    const powerInput = document.getElementById('power');
+    const acField = document.getElementById('acPickerField');
+    const dcField = document.getElementById('dcPickerField');
+    if(type==='AC'){
+      acField.style.display = '';
+      dcField.style.display = 'none';
+      const activeAc = document.querySelector('.ac-opt.active');
+      powerInput.value = activeAc ? activeAc.dataset.kw : 7.4;
+    } else {
+      acField.style.display = 'none';
+      dcField.style.display = '';
+      const activeDc = document.querySelector('.dc-opt.active');
+      powerInput.value = activeDc ? activeDc.dataset.kw : 60;
+    }
+    estimate();
+  });
+});
+
+// AC sub-picker (7.4 / 22 kW)
+document.querySelectorAll('.ac-opt').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.ac-opt').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('power').value = btn.dataset.kw;
+    const hint = document.getElementById('powerHint');
+    if(btn.dataset.rated){
+      hint.textContent = `Point rated ${btn.dataset.rated} kW, but the car's onboard AC charger only accepts up to 11 kW — so power used is 11 kW.`;
+    } else {
+      hint.textContent = "Editable if LakeLife's board shows a different rating on the day.";
+    }
+    estimate();
+  });
+});
+
+// DC sub-picker (60 kW)
+document.querySelectorAll('.dc-opt').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.dc-opt').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('power').value = btn.dataset.kw;
+    estimate();
+  });
+});
+
+['power','startPct','targetPct'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', estimate);
+});
+
+estimate();
+</script>
+</body>
+</html>
